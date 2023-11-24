@@ -85,19 +85,17 @@ auto run_child(const std::string & command)
 	}
 }
 
-auto parse_options(const int argc, const char * argv[])
+auto parse_options(CLI::App & app, const int argc, const char * argv[])
 {
-	CLI::App app{ "Demo of system_snapshot" };
-
 	app.add_flag("-d,--debug", options.debug, "Debug output");
 	app.add_flag("-m,--migration", options.migration, "Migrate child process to random CPU");
 
-	app.add_option("-t,--time", options.time, "Time to run the demo for");
-	app.add_option("-s,--dt", options.dt, "Time step for the demo");
+	app.add_option("-t,--time", options.time, "Time (seconds) to run the demo for");
+	app.add_option("-s,--dt", options.dt, "Time step (seconds) for the demo");
 
 	app.add_option("-r,--run", options.child_process, "Child process to run");
 
-	CLI11_PARSE(app, argc, argv)
+	app.parse(argc, argv);
 
 	if (options.debug) { spdlog::set_level(spdlog::level::debug); }
 
@@ -214,13 +212,19 @@ void print_children_info()
 
 void migrate_random_child()
 {
+	if (std::cmp_equal(global.child_pid, 0))
+	{
+		spdlog::warn("No child process to migrate.");
+		return;
+	}
+
 	const auto & processes = global.snapshot.processes();
 
 	const auto & proc_opt = processes.get(global.child_pid);
 
 	if (not proc_opt)
 	{
-		spdlog::info("Child process (PID {}) does not exist anymore.", global.child_pid);
+		spdlog::error("Child process (PID {}) does not exist anymore.", global.child_pid);
 		return;
 	}
 
@@ -243,7 +247,20 @@ auto main(const int argc, const char * argv[]) -> int
 {
 	try
 	{
-		std::ignore = parse_options(argc, argv);
+		CLI::App app{ "Demo of proc_watcher" };
+
+		try
+		{
+			parse_options(app, argc, argv);
+		}
+		catch (const CLI::ParseError & e)
+		{
+			return app.exit(e);
+		}
+		catch (...)
+		{
+			return EXIT_FAILURE;
+		}
 
 		spdlog::info("Demo of system_snapshot");
 
@@ -261,7 +278,7 @@ auto main(const int argc, const char * argv[]) -> int
 
 				show_CPU_state();
 
-				print_children_info();
+				if (global.child_pid != 0) { print_children_info(); }
 
 				if (options.migration) { migrate_random_child(); }
 			});

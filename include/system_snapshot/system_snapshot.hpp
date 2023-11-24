@@ -236,6 +236,8 @@ namespace system_snapshot
 
 			dirty_node_use_.at(old_node) -= cpu_use;
 			dirty_node_use_.at(node) += cpu_use;
+
+			cpu_migrations_[pid] = cpu;
 		}
 
 		void migrate_to_node(const pid_t pid, const int node)
@@ -262,6 +264,8 @@ namespace system_snapshot
 
 			dirty_node_use_.at(old_node) -= cpu_use;
 			dirty_node_use_.at(node) += cpu_use;
+
+			node_migrations_[pid] = node;
 		}
 
 		void unpin(const pid_t pid) { processes_.unpin(pid); }

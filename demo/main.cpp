@@ -127,6 +127,11 @@ auto format_seconds(const T & seconds)
 
 auto keep_running()
 {
+	if (global.child_pid != 0)
+	{
+		// If the child process exists, keep running until it ends
+		return true;
+	}
 	// Keep running until time is up
 	const auto now     = std::chrono::high_resolution_clock::now();
 	const auto elapsed = std::chrono::duration<double>(now - global.start_time).count();
@@ -154,9 +159,11 @@ void show_NUMA_state()
 	{
 		const auto pids_node = global.snapshot.pids_in_node(node) | ranges::to_vector | ranges::actions::sort;
 
-		const auto node_use = global.snapshot.node_use(node);
+		const auto node_use  = global.snapshot.node_use(node);
+		const auto node_load = global.snapshot.load_of_node(node);
 
-		spdlog::info("Node {}: {} processes -> {:>.2f}% CPU use", node, pids_node.size(), node_use);
+		spdlog::info("Node {}: {} processes -> {:>.2f}% CPU use (load {:>.2f})", node, pids_node.size(), node_use,
+		             node_load);
 		spdlog::debug("\tPIDs: {}", fmt::join(pids_node, ", "));
 	}
 }
@@ -167,9 +174,10 @@ void show_CPU_state()
 	{
 		const auto pids_cpu = global.snapshot.pids_in_cpu(cpu) | ranges::to_vector | ranges::actions::sort;
 
-		const auto cpu_use = global.snapshot.cpu_use(cpu);
+		const auto cpu_use  = global.snapshot.cpu_use(cpu);
+		const auto cpu_load = global.snapshot.load_of_cpu(cpu);
 
-		spdlog::info("CPU {}: {} processes -> {}% CPU use", cpu, pids_cpu.size(), cpu_use);
+		spdlog::info("CPU {}: {} processes -> {}% CPU use (load {:>.2f})", cpu, pids_cpu.size(), cpu_use, cpu_load);
 		spdlog::debug("\tPIDs: {}", fmt::join(pids_cpu, ", "));
 	}
 }
@@ -205,8 +213,8 @@ void print_children_info()
 		}
 
 		const auto & proc = opt_proc->get();
-		spdlog::info("\tPID {}. CPU {} at {:>.2f}%. \"{}\"", proc->pid(), proc->processor(), proc->cpu_use(),
-		             proc->cmdline());
+		spdlog::info("\tPID {}. CPU {} at {:>.2f}% (load {:>.2f}). \"{}\"", proc->pid(), proc->processor(),
+		             proc->cpu_use(), global.snapshot.load_of(proc->pid()), proc->cmdline());
 	}
 }
 

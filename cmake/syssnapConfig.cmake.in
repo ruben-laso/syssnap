@@ -4,6 +4,6 @@ include(CMakeFindDependencyMacro)
 
 find_dependency(range-v3 CONFIG)
 find_dependency(fmt CONFIG)
-find_dependency(proc_watcher CONFIG)
+find_dependency(prox CONFIG)
 
 include("${CMAKE_CURRENT_LIST_DIR}/syssnapTargets.cmake")

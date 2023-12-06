@@ -4,11 +4,13 @@
 #include <unordered_set>
 #include <vector>
 
+#include <range/v3/all.hpp>
+
+#include <prox/prox.hpp>
+
 #include "topology.hpp"
 
-#include "proc_watcher/proc_watcher.hpp"
-
-namespace system_snapshot
+namespace syssnap
 {
 	class snapshot
 	{
@@ -18,10 +20,21 @@ namespace system_snapshot
 		template<typename... args>
 		using fast_umap = std::unordered_map<args...>;
 
+		template<typename Container>
+		static auto & at(Container & container, const std::integral auto index)
+		{
+			if constexpr (std::is_signed_v<decltype(index)>)
+			{
+				assert(std::cmp_greater_equal(index, 0));
+				return container.at(static_cast<std::size_t>(index));
+			}
+			else { return container.at(index); }
+		}
+
 	private:
 		topology topology_{};
 
-		proc_watcher::process_tree processes_{};
+		prox::process_tree processes_{};
 
 		// To know where each PID is (in terms of CPUs and node)
 		std::vector<fast_uset<pid_t>> cpu_pid_map_;  // input: CPU,  output: list of TIDs
@@ -63,9 +76,9 @@ namespace system_snapshot
 			// S-shape function between 0 and 1
 			static const auto weight = [](const float x) {
 				// If x ~ 0, return 0
-				if (x < std::numeric_limits<typeof(x)>::epsilon()) { return 0.0F; }
+				if (x < std::numeric_limits<decltype(x)>::epsilon()) { return 0.0F; }
 				// If x ~ 1, return 1
-				if (x > 1.0F - std::numeric_limits<typeof(x)>::epsilon()) { return 1.0F; }
+				if (x > 1.0F - std::numeric_limits<decltype(x)>::epsilon()) { return 1.0F; }
 				// Else, compute the function
 				constexpr auto beta = 3.0F;
 				return 1.0F / (1.0F + std::pow((x / (1.0F - x)), -beta));
@@ -77,7 +90,7 @@ namespace system_snapshot
 
 				for (size_t i = 0; i < table.size(); i++)
 				{
-					table.at(i) = weight(static_cast<float>(i) / 100.0F);
+					at(table, i) = weight(static_cast<float>(i) / 100.0F);
 				}
 
 				return table;
@@ -87,7 +100,9 @@ namespace system_snapshot
 			    std::clamp(100.0F - ranges::accumulate(pid_usage_map | ranges::views::values, 0.0F), 0.0F, 100.0F);
 			const auto max_cpu_use = ranges::max(pid_usage_map | ranges::views::values);
 
-			const auto alpha = weight_table[static_cast<size_t>(free_cpu_use)];
+			const auto cpu_index = static_cast<int>(std::round(free_cpu_use));
+
+			const auto alpha = at(weight_table, cpu_index);
 			const auto beta  = 1 - alpha;
 
 			for (const auto & [pid, cpu_use] : pid_usage_map)
@@ -103,7 +118,7 @@ namespace system_snapshot
 
 		void compute_loads(const int cpu)
 		{
-			const auto & pids = cpu_pid_map_.at(cpu);
+			const auto & pids = at(cpu_pid_map_, cpu);
 
 			auto pid_usage_map = pids | ranges::views::transform([&](const auto pid) {
 				                     return std::pair<pid_t, float>{ pid, processes_.cpu_use(pid) };
@@ -139,14 +154,14 @@ namespace system_snapshot
 				const auto cpu  = proc.processor();
 				const auto node = proc.numa_node();
 
-				cpu_pid_map_[cpu].insert(pid);
-				node_pid_map_[node].insert(pid);
+				at(cpu_pid_map_, cpu).insert(pid);
+				at(node_pid_map_, node).insert(pid);
 
 				pid_cpu_map_[pid]  = cpu;
 				pid_node_map_[pid] = node;
 
-				cpu_use_[cpu] += proc.cpu_use();
-				node_use_[node] += proc.cpu_use();
+				at(cpu_use_, cpu) += proc.cpu_use();
+				at(node_use_, node) += proc.cpu_use();
 			}
 
 			// Update the dirty stuff
@@ -164,18 +179,24 @@ namespace system_snapshot
 
 		void build()
 		{
+			const auto size_cpus  = static_cast<std::size_t>(topology::max_cpu()) + 1;
+			const auto size_nodes = static_cast<std::size_t>(topology::max_node()) + 1;
+
+			assert(std::cmp_greater(size_cpus, 0));
+			assert(std::cmp_greater(size_nodes, 0));
+
 			// Resize stuff
-			cpu_pid_map_.resize(topology::max_cpu() + 1, {});
-			node_pid_map_.resize(topology::max_node() + 1, {});
+			cpu_pid_map_.resize(size_cpus, {});
+			node_pid_map_.resize(size_nodes, {});
 
-			dirty_cpu_pid_map_.resize(topology::max_cpu() + 1, {});
-			dirty_node_pid_map_.resize(topology::max_node() + 1, {});
+			dirty_cpu_pid_map_.resize(size_cpus, {});
+			dirty_node_pid_map_.resize(size_nodes, {});
 
-			cpu_use_.resize(topology::max_cpu() + 1, 0.0F);
-			node_use_.resize(topology::max_node() + 1, 0.0F);
+			cpu_use_.resize(size_cpus, 0.0F);
+			node_use_.resize(size_nodes, 0.0F);
 
-			dirty_cpu_use_.resize(topology::max_cpu() + 1, 0.0F);
-			dirty_node_use_.resize(topology::max_node() + 1, 0.0F);
+			dirty_cpu_use_.resize(size_cpus, 0.0F);
+			dirty_node_use_.resize(size_nodes, 0.0F);
 
 			rebuild();
 		}
@@ -269,20 +290,20 @@ namespace system_snapshot
 
 		[[nodiscard]] auto original_numa_node(const pid_t pid) const { return pid_node_map_.at(pid); }
 
-		[[nodiscard]] auto pids_in_cpu(const int cpu) const -> const auto & { return dirty_cpu_pid_map_.at(cpu); }
+		[[nodiscard]] auto pids_in_cpu(const int cpu) const -> const auto & { return at(dirty_cpu_pid_map_, cpu); }
 
-		[[nodiscard]] auto pids_in_node(const int node) const -> const auto & { return dirty_node_pid_map_.at(node); }
+		[[nodiscard]] auto pids_in_node(const int node) const -> const auto & { return at(dirty_node_pid_map_, node); }
 
-		[[nodiscard]] auto original_pids_in_cpu(const int cpu) const -> const auto & { return cpu_pid_map_.at(cpu); }
+		[[nodiscard]] auto original_pids_in_cpu(const int cpu) const -> const auto & { return at(cpu_pid_map_, cpu); }
 
 		[[nodiscard]] auto original_pids_in_node(const int node) const -> const auto &
 		{
-			return node_pid_map_.at(node);
+			return at(node_pid_map_, node);
 		}
 
-		[[nodiscard]] auto cpu_use(const int cpu) const { return cpu_use_.at(cpu); }
+		[[nodiscard]] auto cpu_use(const int cpu) const { return at(cpu_use_, cpu); }
 
-		[[nodiscard]] auto node_use(const int node) const { return node_use_.at(node); }
+		[[nodiscard]] auto node_use(const int node) const { return at(node_use_, node); }
 
 		[[nodiscard]] auto load_of(const pid_t pid) const { return pid_load_map_.at(pid); }
 
@@ -313,20 +334,20 @@ namespace system_snapshot
 			const auto old_node = dirty_pid_node_map_.at(pid);
 
 			// Update the dirty maps
-			dirty_cpu_pid_map_.at(old_cpu).erase(pid);
-			dirty_node_pid_map_.at(old_node).erase(pid);
+			at(dirty_cpu_pid_map_, old_cpu).erase(pid);
+			at(dirty_node_pid_map_, old_node).erase(pid);
 
-			dirty_cpu_pid_map_.at(cpu).insert(pid);
-			dirty_node_pid_map_.at(node).insert(pid);
+			at(dirty_cpu_pid_map_, cpu).insert(pid);
+			at(dirty_node_pid_map_, node).insert(pid);
 
 			// Update the dirty usage
 			const auto cpu_use = processes_.cpu_use(pid) / 100.0F;
 
-			dirty_cpu_use_.at(old_cpu) -= cpu_use;
-			dirty_cpu_use_.at(cpu) += cpu_use;
+			at(dirty_cpu_use_, old_cpu) -= cpu_use;
+			at(dirty_cpu_use_, cpu) += cpu_use;
 
-			dirty_node_use_.at(old_node) -= cpu_use;
-			dirty_node_use_.at(node) += cpu_use;
+			at(dirty_node_use_, old_node) -= cpu_use;
+			at(dirty_node_use_, node) += cpu_use;
 
 			cpu_migrations_[pid] = cpu;
 		}
@@ -335,26 +356,26 @@ namespace system_snapshot
 		{
 			dirty_ = true;
 
-			const auto cpu = *(topology_.cpus_from_node(node) | ranges::view::sample(1)).begin();
+			const auto cpu = *(topology_.cpus_from_node(node) | ranges::views::sample(1)).begin();
 
 			const auto old_cpu  = dirty_pid_cpu_map_.at(pid);
 			const auto old_node = dirty_pid_node_map_.at(pid);
 
 			// Update the dirty maps
-			dirty_cpu_pid_map_.at(old_cpu).erase(pid);
-			dirty_node_pid_map_.at(old_node).erase(pid);
+			at(dirty_cpu_pid_map_, old_cpu).erase(pid);
+			at(dirty_node_pid_map_, old_node).erase(pid);
 
-			dirty_cpu_pid_map_.at(cpu).insert(pid);
-			dirty_node_pid_map_.at(node).insert(pid);
+			at(dirty_cpu_pid_map_, cpu).insert(pid);
+			at(dirty_node_pid_map_, node).insert(pid);
 
 			// Update the dirty usage
 			const auto cpu_use = processes_.cpu_use(pid) / 100.0F;
 
-			dirty_cpu_use_.at(old_cpu) -= cpu_use;
-			dirty_cpu_use_.at(cpu) += cpu_use;
+			at(dirty_cpu_use_, old_cpu) -= cpu_use;
+			at(dirty_cpu_use_, cpu) += cpu_use;
 
-			dirty_node_use_.at(old_node) -= cpu_use;
-			dirty_node_use_.at(node) += cpu_use;
+			at(dirty_node_use_, old_node) -= cpu_use;
+			at(dirty_node_use_, node) += cpu_use;
 
 			node_migrations_[pid] = node;
 		}
@@ -363,4 +384,4 @@ namespace system_snapshot
 
 		void unpin() { processes_.unpin(); }
 	};
-} // namespace system_snapshot
+} // namespace syssnap

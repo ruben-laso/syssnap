@@ -1,23 +1,29 @@
 # Range-v3
-CPMAddPackage("gh:ericniebler/range-v3#0.12.0")
+find_package(range-v3 CONFIG REQUIRED)
 if (TARGET range-v3::range-v3)
     message(STATUS "Found range-v3: OK")
+    target_link_libraries(${PROJECT_NAME}_${PROJECT_NAME} INTERFACE range-v3::range-v3)
 else ()
     message(SEND_ERROR "Found range-v3: ERROR")
 endif ()
 
 # fmt
-CPMAddPackage("gh:fmtlib/fmt@10.1.1")
+find_package(fmt CONFIG REQUIRED)
 if (TARGET fmt::fmt)
     message(STATUS "Found fmt: OK")
+    target_link_libraries(${PROJECT_NAME}_${PROJECT_NAME} INTERFACE fmt::fmt)
 else ()
     message(SEND_ERROR "Found fmt: ERROR")
 endif ()
 
-# proc_watcher
-CPMAddPackage("gl:ruben.laso/proc_watcher")
-if (TARGET proc_watcher::proc_watcher)
-    message(STATUS "Found proc_watcher: OK")
+# prox
+find_package(prox CONFIG REQUIRED)
+if (TARGET prox::prox)
+    message(STATUS "Found prox: OK")
+    target_link_libraries(${PROJECT_NAME}_${PROJECT_NAME} INTERFACE prox::prox)
 else ()
-    message(SEND_ERROR "Found proc_watcher: ERROR")
+    message(SEND_ERROR "Found prox: ERROR")
 endif ()
+
+# libnuma
+target_link_libraries(${PROJECT_NAME}_${PROJECT_NAME} INTERFACE numa)

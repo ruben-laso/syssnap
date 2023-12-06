@@ -10,7 +10,7 @@
 
 #include <CLI/CLI.hpp>
 
-#include <system_snapshot/system_snapshot.hpp>
+#include <syssnap/syssnap.hpp>
 
 // Options structure
 struct Options
@@ -36,7 +36,7 @@ struct Global
 {
 	std::chrono::time_point<std::chrono::high_resolution_clock> start_time = std::chrono::high_resolution_clock::now();
 
-	system_snapshot::snapshot snapshot;
+	syssnap::snapshot snapshot;
 
 	pid_t child_pid = 0;
 };

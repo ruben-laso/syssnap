@@ -11,7 +11,7 @@
 
 #include <tabulate/table.hpp>
 
-namespace system_snapshot
+namespace syssnap
 {
 	class topology
 	{
@@ -282,4 +282,4 @@ namespace system_snapshot
 			return os;
 		}
 	};
-} // namespace system_snapshot
+} // namespace syssnap

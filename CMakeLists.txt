@@ -18,27 +18,30 @@ message(STATUS "Searching targets")
 include(cmake/CMakeTargets.cmake)
 message(STATUS "Searching targets - done")
 
-message(STATUS "Configuring CMake variables")
-include(cmake/CMakePreConf.cmake)
-message(STATUS "Configuring CMake variables - done")
-
 message(STATUS "Searching external libraries")
 include(cmake/CMakeLibs.cmake)
 message(STATUS "Searching external libraries - done")
 
-message(STATUS "Linking libraries")
-include(cmake/CMakeLink.cmake)
-message(STATUS "Linking libraries - done")
-
 message(STATUS "Configuring install")
 if (NOT CMAKE_SKIP_INSTALL_RULES)
-    include(cmake/CMakeInstall.cmake)
+    include(cmake/install-rules.cmake)
 endif ()
 message(STATUS "Configuring install - done")
 
+# ---- Examples ----
+
+option(BUILD_EXAMPLES "Build example(s)" OFF)
+if(PROJECT_IS_TOP_LEVEL)
+    set(BUILD_EXAMPLES "${${PROJECT_NAME}_DEVELOPER_MODE}")
+endif()
+
+if(BUILD_EXAMPLES)
+    add_subdirectory(example)
+endif()
+
 # ---- Developer mode ----
 
-if (NOT DEVELOPER_MODE)
+if (NOT ${PROJECT_NAME}_DEVELOPER_MODE)
     return()
 elseif (NOT PROJECT_IS_TOP_LEVEL)
     message(
@@ -46,3 +49,5 @@ elseif (NOT PROJECT_IS_TOP_LEVEL)
             "Developer mode is intended for developers of ${PROJECT_NAME}"
     )
 endif ()
+
+include(cmake/dev-mode.cmake)

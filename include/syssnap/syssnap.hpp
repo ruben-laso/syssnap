@@ -9,6 +9,7 @@
 #include <prox/prox.hpp>
 
 #include "topology.hpp"
+#include "types.hpp"
 
 namespace syssnap
 {
@@ -20,17 +21,6 @@ namespace syssnap
 		template<typename... args>
 		using fast_umap = std::unordered_map<args...>;
 
-		template<typename Container>
-		static auto & at(Container & container, const std::integral auto index)
-		{
-			if constexpr (std::is_signed_v<decltype(index)>)
-			{
-				assert(std::cmp_greater_equal(index, 0));
-				return container.at(static_cast<std::size_t>(index));
-			}
-			else { return container.at(index); }
-		}
-
 	private:
 		topology topology_{};
 
@@ -41,8 +31,8 @@ namespace syssnap
 		std::vector<fast_uset<pid_t>> node_pid_map_; // input: node, output: list of TIDs
 
 		// Cache of the CPU and node of each PID
-		fast_umap<pid_t, int> pid_cpu_map_;  // input: TID, output: CPU
-		fast_umap<pid_t, int> pid_node_map_; // input: TID, output: node
+		fast_umap<pid_t, cpu_t>  pid_cpu_map_;  // input: TID, output: CPU
+		fast_umap<pid_t, node_t> pid_node_map_; // input: TID, output: node
 
 		// Load of each PID
 		fast_umap<pid_t, float> pid_load_map_; // input: TID, output: load
@@ -57,14 +47,14 @@ namespace syssnap
 		std::vector<fast_uset<pid_t>> dirty_node_pid_map_; // input: node, output: list of TIDs
 
 		// Cache of the CPU and node of each PID
-		fast_umap<pid_t, int> dirty_pid_cpu_map_;  // input: TID,  output: CPU
-		fast_umap<pid_t, int> dirty_pid_node_map_; // input: TID,  output: node
+		fast_umap<pid_t, cpu_t>  dirty_pid_cpu_map_;  // input: TID,  output: CPU
+		fast_umap<pid_t, node_t> dirty_pid_node_map_; // input: TID,  output: node
 
 		std::vector<float> dirty_cpu_use_;  // input: CPU,  output: use
 		std::vector<float> dirty_node_use_; // input: node, output: use
 
-		fast_umap<pid_t, int> cpu_migrations_;  // input: PID, output: destination CPU
-		fast_umap<pid_t, int> node_migrations_; // input: PID, output: destination node
+		fast_umap<pid_t, cpu_t>  cpu_migrations_;  // input: PID, output: destination CPU
+		fast_umap<pid_t, node_t> node_migrations_; // input: PID, output: destination node
 
 		template<typename Map>
 		void compute_load_sigmoid(const Map & pid_usage_map)
@@ -90,7 +80,7 @@ namespace syssnap
 
 				for (size_t i = 0; i < table.size(); i++)
 				{
-					at(table, i) = weight(static_cast<float>(i) / 100.0F);
+					table.at(i) = weight(static_cast<float>(i) / 100.0F);
 				}
 
 				return table;
@@ -102,7 +92,7 @@ namespace syssnap
 
 			const auto cpu_index = static_cast<int>(std::round(free_cpu_use));
 
-			const auto alpha = at(weight_table, cpu_index);
+			const auto alpha = weight_table.at(idx(cpu_index));
 			const auto beta  = 1 - alpha;
 
 			for (const auto & [pid, cpu_use] : pid_usage_map)
@@ -116,9 +106,9 @@ namespace syssnap
 			}
 		}
 
-		void compute_loads(const int cpu)
+		void compute_loads(const cpu_t cpu)
 		{
-			const auto & pids = at(cpu_pid_map_, cpu);
+			const auto & pids = cpu_pid_map_.at(idx(cpu));
 
 			auto pid_usage_map = pids | ranges::views::transform([&](const auto pid) {
 				                     return std::pair<pid_t, float>{ pid, processes_.cpu_use(pid) };
@@ -154,14 +144,14 @@ namespace syssnap
 				const auto cpu  = proc.processor();
 				const auto node = proc.numa_node();
 
-				at(cpu_pid_map_, cpu).insert(pid);
-				at(node_pid_map_, node).insert(pid);
+				cpu_pid_map_.at(idx(cpu)).insert(pid);
+				node_pid_map_.at(idx(node)).insert(pid);
 
 				pid_cpu_map_[pid]  = cpu;
 				pid_node_map_[pid] = node;
 
-				at(cpu_use_, cpu) += proc.cpu_use();
-				at(node_use_, node) += proc.cpu_use();
+				cpu_use_.at(idx(cpu)) += proc.cpu_use();
+				node_use_.at(idx(node)) += proc.cpu_use();
 			}
 
 			// Update the dirty stuff
@@ -290,30 +280,39 @@ namespace syssnap
 
 		[[nodiscard]] auto original_numa_node(const pid_t pid) const { return pid_node_map_.at(pid); }
 
-		[[nodiscard]] auto pids_in_cpu(const int cpu) const -> const auto & { return at(dirty_cpu_pid_map_, cpu); }
-
-		[[nodiscard]] auto pids_in_node(const int node) const -> const auto & { return at(dirty_node_pid_map_, node); }
-
-		[[nodiscard]] auto original_pids_in_cpu(const int cpu) const -> const auto & { return at(cpu_pid_map_, cpu); }
-
-		[[nodiscard]] auto original_pids_in_node(const int node) const -> const auto &
+		[[nodiscard]] auto pids_in_cpu(const cpu_t cpu) const -> const auto &
 		{
-			return at(node_pid_map_, node);
+			return dirty_cpu_pid_map_.at(idx(cpu));
 		}
 
-		[[nodiscard]] auto cpu_use(const int cpu) const { return at(cpu_use_, cpu); }
+		[[nodiscard]] auto pids_in_node(const node_t node) const -> const auto &
+		{
+			return dirty_node_pid_map_.at(idx(node));
+		}
 
-		[[nodiscard]] auto node_use(const int node) const { return at(node_use_, node); }
+		[[nodiscard]] auto original_pids_in_cpu(const cpu_t cpu) const -> const auto &
+		{
+			return cpu_pid_map_.at(idx(cpu));
+		}
+
+		[[nodiscard]] auto original_pids_in_node(const node_t node) const -> const auto &
+		{
+			return node_pid_map_.at(idx(node));
+		}
+
+		[[nodiscard]] auto cpu_use(const cpu_t cpu) const { return cpu_use_.at(idx(cpu)); }
+
+		[[nodiscard]] auto node_use(const node_t node) const { return node_use_.at(idx(node)); }
 
 		[[nodiscard]] auto load_of(const pid_t pid) const { return pid_load_map_.at(pid); }
 
-		[[nodiscard]] auto load_of_cpu(const int cpu) const
+		[[nodiscard]] auto load_of_cpu(const cpu_t cpu) const
 		{
 			return ranges::accumulate(
 			    pids_in_cpu(cpu) | ranges::views::transform([&](const auto pid) { return load_of(pid); }), 0.0F);
 		}
 
-		[[nodiscard]] auto load_of_node(const int node) const
+		[[nodiscard]] auto load_of_node(const node_t node) const
 		{
 			return ranges::accumulate(
 			    pids_in_node(node) | ranges::views::transform([&](const auto pid) { return load_of(pid); }), 0.0F);
@@ -324,7 +323,7 @@ namespace syssnap
 			return ranges::accumulate(pid_load_map_ | ranges::views::values, 0.0F);
 		}
 
-		void migrate_to_cpu(const pid_t pid, const int cpu)
+		void migrate_to_cpu(const pid_t pid, const cpu_t cpu)
 		{
 			dirty_ = true;
 
@@ -334,25 +333,25 @@ namespace syssnap
 			const auto old_node = dirty_pid_node_map_.at(pid);
 
 			// Update the dirty maps
-			at(dirty_cpu_pid_map_, old_cpu).erase(pid);
-			at(dirty_node_pid_map_, old_node).erase(pid);
+			dirty_cpu_pid_map_.at(idx(old_cpu)).erase(pid);
+			dirty_node_pid_map_.at(idx(old_node)).erase(pid);
 
-			at(dirty_cpu_pid_map_, cpu).insert(pid);
-			at(dirty_node_pid_map_, node).insert(pid);
+			dirty_cpu_pid_map_.at(idx(cpu)).insert(pid);
+			dirty_node_pid_map_.at(idx(node)).insert(pid);
 
 			// Update the dirty usage
 			const auto cpu_use = processes_.cpu_use(pid) / 100.0F;
 
-			at(dirty_cpu_use_, old_cpu) -= cpu_use;
-			at(dirty_cpu_use_, cpu) += cpu_use;
+			dirty_cpu_use_.at(idx(old_cpu)) -= cpu_use;
+			dirty_cpu_use_.at(idx(cpu)) += cpu_use;
 
-			at(dirty_node_use_, old_node) -= cpu_use;
-			at(dirty_node_use_, node) += cpu_use;
+			dirty_node_use_.at(idx(old_node)) -= cpu_use;
+			dirty_node_use_.at(idx(node)) += cpu_use;
 
 			cpu_migrations_[pid] = cpu;
 		}
 
-		void migrate_to_node(const pid_t pid, const int node)
+		void migrate_to_node(const pid_t pid, const node_t node)
 		{
 			dirty_ = true;
 
@@ -362,20 +361,20 @@ namespace syssnap
 			const auto old_node = dirty_pid_node_map_.at(pid);
 
 			// Update the dirty maps
-			at(dirty_cpu_pid_map_, old_cpu).erase(pid);
-			at(dirty_node_pid_map_, old_node).erase(pid);
+			dirty_cpu_pid_map_.at(idx(old_cpu)).erase(pid);
+			dirty_node_pid_map_.at(idx(old_node)).erase(pid);
 
-			at(dirty_cpu_pid_map_, cpu).insert(pid);
-			at(dirty_node_pid_map_, node).insert(pid);
+			dirty_cpu_pid_map_.at(idx(cpu)).insert(pid);
+			dirty_node_pid_map_.at(idx(node)).insert(pid);
 
 			// Update the dirty usage
 			const auto cpu_use = processes_.cpu_use(pid) / 100.0F;
 
-			at(dirty_cpu_use_, old_cpu) -= cpu_use;
-			at(dirty_cpu_use_, cpu) += cpu_use;
+			dirty_cpu_use_.at(idx(old_cpu)) -= cpu_use;
+			dirty_cpu_use_.at(idx(cpu)) += cpu_use;
 
-			at(dirty_node_use_, old_node) -= cpu_use;
-			at(dirty_node_use_, node) += cpu_use;
+			dirty_node_use_.at(idx(old_node)) -= cpu_use;
+			dirty_node_use_.at(idx(node)) += cpu_use;
 
 			node_migrations_[pid] = node;
 		}

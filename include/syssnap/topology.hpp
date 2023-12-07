@@ -2,6 +2,7 @@
 
 #include <numa.h>
 
+#include <concepts>
 #include <utility>
 #include <vector>
 
@@ -11,38 +12,44 @@
 
 #include <tabulate/table.hpp>
 
+#include "types.hpp"
+
 namespace syssnap
 {
 	class topology
 	{
-		std::vector<int> nodes_;
-		std::vector<int> cpus_;
+	private:
+		std::vector<node_t> nodes_;
+		std::vector<cpu_t>  cpus_;
 
-		std::vector<std::vector<int>> nodes_by_distance_; // Contains the list of nodes sorted by distance
+		std::vector<std::vector<node_t>> nodes_by_distance_; // Contains the list of nodes sorted by distance
 		// E.g. nodes_by_distance[1] = {1, 0, 2, 3} -> list of nodes, sorted by NUMA distance from node 1,
 		// so 1 is the "closest" node (obviously), 0 is the closest neighbour, and 3 is the furthest neighbour
 
 		// To know where each CPU is (in terms of memory node)
-		std::vector<int>              cpu_node_map_; // input: CPU,  output: node
-		std::vector<std::vector<int>> node_cpu_map_; // input: node, output: list of CPUs
+		std::vector<node_t>             cpu_node_map_; // input: CPU,  output: node
+		std::vector<std::vector<cpu_t>> node_cpu_map_; // input: node, output: list of CPUs
 
 		void detect_system_UMA()
 		{
-			nodes_ = { 0 };
+			nodes_ = { node_t{ 0 } };
 			cpus_  = allowed_cpus();
 
-			node_cpu_map_.resize(max_node() + 1, {});
-			node_cpu_map_[0] = cpus_;
+			// disable implicit conversion temporarily
+			// NOLINTBEGIN
+			const auto size_cpus  = static_cast<std::size_t>(max_cpu() + 1);
+			const auto size_nodes = static_cast<std::size_t>(max_node() + 1);
+			// NOLINTEND
 
-			cpu_node_map_.resize(max_cpu() + 1, 0);
-			for (const auto & cpu : cpus_)
-			{
-				cpu_node_map_[cpu] = nodes_.front();
-			}
+			node_cpu_map_.resize(size_nodes, {});
+			node_cpu_map_.at(0) = cpus_;
+
+			cpu_node_map_.resize(size_cpus, nodes_.front());
 
 			// Compute the lists of nodes sorted by distance from a given node...
-			nodes_by_distance_.resize(max_node() + 1, {});
-			nodes_by_distance_[0] = { 0 };
+			nodes_by_distance_.resize(size_nodes, {});
+			// libnuma is not available, so the distance is always 1
+			nodes_by_distance_.at(0) = { node_t{ 1 } };
 		}
 
 		void detect_system_NUMA()
@@ -50,11 +57,14 @@ namespace syssnap
 			nodes_ = allowed_nodes();
 			cpus_  = allowed_cpus();
 
-			node_cpu_map_.resize(max_node() + 1, {});
+			const auto size_cpus  = static_cast<std::size_t>(max_cpu() + 1); // NOLINT
+			const auto size_nodes = static_cast<std::size_t>(max_node() + 1); // NOLINT
+
+			node_cpu_map_.resize(size_nodes, {});
 			for (const auto node : nodes_)
 			{
-				node_cpu_map_[node] = detect_cpus_from_node(node);
-				if (node_cpu_map_[node].empty())
+				node_cpu_map_.at(idx(node)) = detect_cpus_from_node(node);
+				if (node_cpu_map_.at(idx(node)).empty())
 				{
 					const auto error = fmt::format("Error retrieving cpus from node {}", node);
 					throw std::runtime_error(error);
@@ -62,14 +72,14 @@ namespace syssnap
 			}
 
 			// For each CPU, reads topology file to get package (node) id
-			cpu_node_map_.resize(num_of_cpus(), 0);
+			cpu_node_map_.resize(size_cpus, 0);
 			for (const auto cpu : cpus_)
 			{
-				cpu_node_map_[cpu] = numa_node_of_cpu(cpu);
+				cpu_node_map_.at(idx(cpu)) = numa_node_of_cpu(cpu);
 			}
 
 			// Compute the lists of nodes sorted by distance from a given node...
-			nodes_by_distance_.resize(num_of_nodes(), {});
+			nodes_by_distance_.resize(size_nodes, {});
 			for (const auto node : nodes_)
 			{
 				std::multimap<int, int> distance_nodes_map{};
@@ -80,7 +90,7 @@ namespace syssnap
 				}
 
 				// Vector of nodes sorted by distances
-				std::vector<int> nodes_by_distance;
+				std::vector<node_t> nodes_by_distance;
 				nodes_by_distance.reserve(nodes_.size());
 
 				for (const auto & node_2 : distance_nodes_map | ranges::views::values)
@@ -88,7 +98,7 @@ namespace syssnap
 					nodes_by_distance.emplace_back(node_2);
 				}
 
-				nodes_by_distance_[node] = nodes_by_distance;
+				nodes_by_distance_.at(idx(node)) = nodes_by_distance;
 			}
 		}
 
@@ -100,21 +110,21 @@ namespace syssnap
 
 	public:
 		// Static functions
-		[[nodiscard]] static auto max_node() -> int
+		[[nodiscard]] static auto max_node() -> node_t
 		{
-			static const auto MAX_NODE = numa_max_node();
+			static const auto MAX_NODE = node_t{ numa_max_node() };
 			return MAX_NODE;
 		}
 
-		[[nodiscard]] static auto max_cpu() -> int
+		[[nodiscard]] static auto max_cpu() -> cpu_t
 		{
-			static const auto MAX_CPU = ranges::max(allowed_cpus());
+			static const auto MAX_CPU = *std::max(allowed_cpus().begin(), allowed_cpus().end());
 			return MAX_CPU;
 		}
 
-		[[nodiscard]] static auto allowed_cpus() -> std::vector<int>
+		[[nodiscard]] static auto allowed_cpus() -> std::vector<cpu_t>
 		{
-			std::vector<int> allowed_cpus;
+			std::vector<cpu_t> allowed_cpus;
 
 			for (const auto cpu : ranges::views::indices(0U, static_cast<uint32_t>(numa_all_cpus_ptr->size)))
 			{
@@ -127,9 +137,9 @@ namespace syssnap
 			return allowed_cpus;
 		}
 
-		[[nodiscard]] static auto allowed_nodes() -> std::vector<int>
+		[[nodiscard]] static auto allowed_nodes() -> std::vector<node_t>
 		{
-			std::vector<int> allowed_nodes;
+			std::vector<node_t> allowed_nodes;
 
 			auto * allowed_nodes_mask = numa_get_mems_allowed();
 
@@ -146,9 +156,9 @@ namespace syssnap
 			return allowed_nodes;
 		}
 
-		[[nodiscard]] static auto detect_cpus_from_node(const int node) -> std::vector<int>
+		[[nodiscard]] static auto detect_cpus_from_node(const node_t node) -> std::vector<cpu_t>
 		{
-			std::vector<int> cpus_in_node;
+			std::vector<cpu_t> cpus_in_node;
 
 			bitmask * cpus_bm = numa_allocate_cpumask();
 
@@ -180,36 +190,42 @@ namespace syssnap
 
 		[[nodiscard]] auto num_of_nodes() const -> size_t { return nodes_.size(); }
 
-		[[nodiscard]] auto cpus() const -> const std::vector<int> & { return cpus_; }
+		[[nodiscard]] auto cpus() const -> const std::vector<cpu_t> & { return cpus_; }
 
-		[[nodiscard]] auto nodes() const -> const std::vector<int> & { return nodes_; }
+		[[nodiscard]] auto nodes() const -> const std::vector<node_t> & { return nodes_; }
 
-		[[nodiscard]] auto node_cpu_map() const -> const std::vector<std::vector<int>> & { return node_cpu_map_; }
+		[[nodiscard]] auto node_cpu_map() const -> const std::vector<std::vector<cpu_t>> & { return node_cpu_map_; }
 
-		[[nodiscard]] auto cpu_node_map() const -> const std::vector<int> & { return cpu_node_map_; }
+		[[nodiscard]] auto cpu_node_map() const -> const std::vector<node_t> & { return cpu_node_map_; }
 
-		[[nodiscard]] auto nodes_by_distance() const -> const std::vector<std::vector<int>> &
+		[[nodiscard]] auto nodes_by_distance() const -> const std::vector<std::vector<node_t>> &
 		{
 			return nodes_by_distance_;
 		}
 
-		[[nodiscard]] auto nodes_by_distance(const int node) const -> const std::vector<int> &
+		[[nodiscard]] auto nodes_by_distance(const node_t node) const -> const std::vector<int> &
 		{
-			return nodes_by_distance_[node];
+			return nodes_by_distance_.at(idx(node));
 		}
 
-		[[nodiscard]] static auto node_distance(const int node_1, const int node_2) -> int
+		[[nodiscard]] static auto node_distance(const node_t node_1, const node_t node_2) -> int
 		{
 			return numa_distance(node_1, node_2);
 		}
 
-		[[nodiscard]] auto cpus_from_node(const int node) const -> const auto & { return node_cpu_map_[node]; }
-
-		[[nodiscard]] auto node_from_cpu(const int cpu) const -> int { return cpu_node_map_[cpu]; }
-
-		[[nodiscard]] auto ith_cpu_from_node(const int node, const size_t i) const -> int
+		[[nodiscard]] auto cpus_from_node(const node_t node) const -> const auto &
 		{
-			return node_cpu_map_[node][i];
+			return node_cpu_map_.at(idx(node));
+		}
+
+		[[nodiscard]] auto node_from_cpu(const cpu_t cpu) const -> node_t
+		{
+			return cpu_node_map_.at(idx(cpu));
+		}
+
+		[[nodiscard]] auto ith_cpu_from_node(const node_t node, const std::unsigned_integral auto i) const -> int
+		{
+			return node_cpu_map_.at(node).at(i);
 		}
 
 		friend auto operator<<(std::ostream & os, const topology & topo) -> std::ostream &

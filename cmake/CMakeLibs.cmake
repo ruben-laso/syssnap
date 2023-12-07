@@ -16,6 +16,15 @@ else ()
     message(SEND_ERROR "Found fmt: ERROR")
 endif ()
 
+# tabulate
+find_package(tabulate CONFIG REQUIRED)
+if (TARGET tabulate::tabulate)
+    message(STATUS "Found tabulate: OK")
+    target_link_libraries(${PROJECT_NAME}_${PROJECT_NAME} INTERFACE tabulate::tabulate)
+else ()
+    message(SEND_ERROR "Found tabulate: ERROR")
+endif ()
+
 # prox
 find_package(prox CONFIG REQUIRED)
 if (TARGET prox::prox)

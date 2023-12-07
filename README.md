@@ -25,6 +25,7 @@ sudo cmake --build . --target install
 - [`range-v3`](https://github.com/ericniebler/range-v3)
 - [`fmt`](https://github.com/fmtlib/fmt)
 - [`libnuma`](https://man7.org/linux/man-pages/man3/numa.3.html)
+- [`tabulate`](https://github.com/p-ranav/tabulate)
 
 Additionally, `syssnap` example depends on the following libraries:
 - [`spdlog`](https://github.com/gabime/spdlog)

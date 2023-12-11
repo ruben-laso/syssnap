@@ -118,7 +118,7 @@ namespace syssnap
 
 		[[nodiscard]] static auto max_cpu() -> cpu_t
 		{
-			static const auto MAX_CPU = *std::max(allowed_cpus().begin(), allowed_cpus().end());
+			static const auto MAX_CPU = ranges::max(allowed_cpus());
 			return MAX_CPU;
 		}
 

@@ -272,6 +272,10 @@ namespace syssnap
 			dirty_ = false;
 		}
 
+		[[nodiscard]] auto process(const pid_t pid) -> auto & { return processes_.find(pid); }
+
+		[[nodiscard]] auto process(const pid_t pid) const -> const auto & { return processes_.find(pid); }
+
 		[[nodiscard]] auto processor(const pid_t pid) const { return dirty_pid_cpu_map_.at(pid); }
 
 		[[nodiscard]] auto original_processor(const pid_t pid) const { return pid_cpu_map_.at(pid); }

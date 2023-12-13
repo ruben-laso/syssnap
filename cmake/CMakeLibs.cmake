@@ -1,38 +1,18 @@
 # Range-v3
-find_package(range-v3 CONFIG REQUIRED)
-if (TARGET range-v3::range-v3)
-    message(STATUS "Found range-v3: OK")
-    target_link_libraries(${PROJECT_NAME}_${PROJECT_NAME} INTERFACE range-v3::range-v3)
-else ()
-    message(SEND_ERROR "Found range-v3: ERROR")
-endif ()
+find_package(range-v3 REQUIRED)
+target_link_libraries(${PROJECT_NAME}_${PROJECT_NAME} INTERFACE range-v3::range-v3)
 
 # fmt
-find_package(fmt CONFIG REQUIRED)
-if (TARGET fmt::fmt)
-    message(STATUS "Found fmt: OK")
-    target_link_libraries(${PROJECT_NAME}_${PROJECT_NAME} INTERFACE fmt::fmt)
-else ()
-    message(SEND_ERROR "Found fmt: ERROR")
-endif ()
+find_package(fmt REQUIRED)
+target_link_libraries(${PROJECT_NAME}_${PROJECT_NAME} INTERFACE fmt::fmt)
 
 # tabulate
-find_package(tabulate CONFIG REQUIRED)
-if (TARGET tabulate::tabulate)
-    message(STATUS "Found tabulate: OK")
-    target_link_libraries(${PROJECT_NAME}_${PROJECT_NAME} INTERFACE tabulate::tabulate)
-else ()
-    message(SEND_ERROR "Found tabulate: ERROR")
-endif ()
+find_package(tabulate REQUIRED)
+target_link_libraries(${PROJECT_NAME}_${PROJECT_NAME} INTERFACE tabulate::tabulate)
 
 # prox
-find_package(prox CONFIG REQUIRED)
-if (TARGET prox::prox)
-    message(STATUS "Found prox: OK")
-    target_link_libraries(${PROJECT_NAME}_${PROJECT_NAME} INTERFACE prox::prox)
-else ()
-    message(SEND_ERROR "Found prox: ERROR")
-endif ()
+find_package(prox REQUIRED)
+target_link_libraries(${PROJECT_NAME}_${PROJECT_NAME} INTERFACE prox::prox)
 
 # libnuma
 target_link_libraries(${PROJECT_NAME}_${PROJECT_NAME} INTERFACE numa)

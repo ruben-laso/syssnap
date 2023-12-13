@@ -13,7 +13,7 @@ include(CMakePackageConfigHelpers)
 include(GNUInstallDirs)
 
 # find_package(<package>) call for consumers to find this project
-set(package prox)
+set(package syssnap)
 
 install(
     DIRECTORY include/

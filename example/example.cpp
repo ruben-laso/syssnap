@@ -238,9 +238,13 @@ void migrate_random_child()
 
 	const auto & children_pids = proc_opt->get()->children_and_tasks();
 
+	const auto get_one_random = [](const auto & rng) {
+		return *(rng | ranges::views::sample(1)).begin();
+	};
+
 	// Select a random CPU
-	const auto cpu = static_cast<int>(*(global.snapshot.system_topology().cpus() | ranges::views::sample(1)).begin());
-	const auto pid = children_pids.empty() ? global.child_pid : *(children_pids | ranges::views::sample(1)).begin();
+	const auto cpu = get_one_random(global.snapshot.system_topology().cpus());
+	const auto pid = children_pids.empty() ? global.child_pid : get_one_random(children_pids);
 
 	spdlog::info("Migrating child process (PID {}) to CPU {}...", pid, cpu);
 

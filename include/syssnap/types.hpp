@@ -1,6 +1,7 @@
 #pragma once
 
 #include <concepts>
+#include <stdexcept>
 #include <utility>
 
 namespace syssnap

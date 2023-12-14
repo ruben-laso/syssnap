@@ -3,12 +3,11 @@
 #include <numa.h>
 
 #include <concepts>
+#include <string>
 #include <utility>
 #include <vector>
 
 #include <range/v3/all.hpp>
-
-#include <fmt/format.h>
 
 #include <tabulate/table.hpp>
 
@@ -57,7 +56,7 @@ namespace syssnap
 			nodes_ = allowed_nodes();
 			cpus_  = allowed_cpus();
 
-			const auto size_cpus  = static_cast<std::size_t>(max_cpu() + 1); // NOLINT
+			const auto size_cpus  = static_cast<std::size_t>(max_cpu() + 1);  // NOLINT
 			const auto size_nodes = static_cast<std::size_t>(max_node() + 1); // NOLINT
 
 			node_cpu_map_.resize(size_nodes, {});
@@ -66,8 +65,9 @@ namespace syssnap
 				node_cpu_map_.at(idx(node)) = detect_cpus_from_node(node);
 				if (node_cpu_map_.at(idx(node)).empty())
 				{
-					const auto error = fmt::format("Error retrieving cpus from node {}", node);
-					throw std::runtime_error(error);
+					std::stringstream error;
+					error << "Error retrieving cpus from node " << node << ": " << strerror(errno);
+					throw std::runtime_error(error.str());
 				}
 			}
 
@@ -164,9 +164,10 @@ namespace syssnap
 
 			if (std::cmp_equal(numa_node_to_cpus(static_cast<int>(node), cpus_bm), -1))
 			{
-				const auto error = fmt::format("Error retrieving cpus from node {}: {}", node, strerror(errno));
 				numa_free_cpumask(cpus_bm);
-				throw std::runtime_error(error);
+				std::stringstream error;
+				error << "Error retrieving cpus from node " << node << ": " << strerror(errno);
+				throw std::runtime_error(error.str());
 			}
 
 			const auto allowed_cpus = topology::allowed_cpus();
@@ -218,10 +219,7 @@ namespace syssnap
 			return node_cpu_map_.at(idx(node));
 		}
 
-		[[nodiscard]] auto node_from_cpu(const cpu_t cpu) const -> node_t
-		{
-			return cpu_node_map_.at(idx(cpu));
-		}
+		[[nodiscard]] auto node_from_cpu(const cpu_t cpu) const -> node_t { return cpu_node_map_.at(idx(cpu)); }
 
 		[[nodiscard]] auto ith_cpu_from_node(const node_t node, const std::unsigned_integral auto i) const -> int
 		{
